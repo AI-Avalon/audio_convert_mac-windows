@@ -12,8 +12,11 @@ logs/*
 !logs/.gitkeep
 03_Output/*
 !03_Output/.gitkeep
+04_Archive/*
+!04_Archive/.gitkeep
 01_Input/*
 !01_Input/.gitkeep
 logs/*.log
 02_Processing/*
 !02_Processing/.gitkeep
+test.wav
