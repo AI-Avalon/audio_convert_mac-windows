@@ -10,7 +10,7 @@ set UV_ZIP_URL=https://github.com/astral-sh/uv/releases/download/%UV_VERSION%/uv
 if not exist "%UV_EXE%" (
   echo [INFO] uv をダウンロードしています...
   if not exist "%UV_DIR%" mkdir "%UV_DIR%"
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '%UV_ZIP_URL%' -OutFile '.runtime\\uv\\uv.zip'"
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('%UV_ZIP_URL%', '.runtime\\uv\\uv.zip')"
   powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '.runtime\\uv\\uv.zip' -DestinationPath '.runtime\\uv' -Force"
   if not exist "%UV_EXE%" (
     for /r "%UV_DIR%" %%F in (uv.exe) do (
