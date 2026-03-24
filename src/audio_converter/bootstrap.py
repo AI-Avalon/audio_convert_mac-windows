@@ -54,6 +54,10 @@ def ensure_project_dirs(root: Path) -> None:
     if not processing_keep.exists():
         processing_keep.write_text("", encoding="utf-8")
 
+    archive_keep = root / "04_Archive" / ".gitkeep"
+    if not archive_keep.exists():
+        archive_keep.write_text("", encoding="utf-8")
+
 
 def _choose_ffmpeg_source() -> tuple[str, str]:
     system = platform.system().lower()

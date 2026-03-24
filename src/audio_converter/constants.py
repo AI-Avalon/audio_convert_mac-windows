@@ -7,6 +7,7 @@ PROJECT_DIRS = [
     "01_Input",
     "02_Processing",
     "03_Output",
+    "04_Archive",
 ]
 
 AUDIO_EXTENSIONS = {

@@ -52,6 +52,37 @@ def _build_output_path(output_dir: Path, source: Path) -> Path:
     return output_dir / f"{safe_stem}.mp4"
 
 
+def _build_work_path(processing_dir: Path, idx: int, source: Path) -> Path:
+    safe_name = source.name.replace("/", "_").replace("\\", "_")
+    return processing_dir / f"{idx:04d}_{safe_name}"
+
+
+def _archive_original(input_dir: Path, archive_run_dir: Path, source: Path) -> None:
+    relative = source.relative_to(input_dir)
+    target = archive_run_dir / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    stem = target.stem
+    suffix = target.suffix
+    counter = 1
+    while target.exists():
+        target = target.with_name(f"{stem}_{counter}{suffix}")
+        counter += 1
+
+    shutil.move(str(source), str(target))
+    logging.info("入力ファイルをアーカイブへ移動: %s -> %s", source, target)
+
+
+def _cleanup_empty_dirs(root_dir: Path) -> None:
+    dirs = sorted((p for p in root_dir.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True)
+    for path in dirs:
+        try:
+            if not any(path.iterdir()):
+                path.rmdir()
+        except Exception:
+            pass
+
+
 def _drawtext_filter(root: Path, source_name: str) -> str:
     text, changed = sanitize_overlay_text(source_name)
     if changed:
@@ -147,9 +178,13 @@ def run_conversion(
     input_dir = root / "01_Input"
     processing_dir = root / "02_Processing"
     output_root = root / "03_Output"
+    archive_root = root / "04_Archive"
 
-    run_dir = output_root / dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+    run_stamp = dt.datetime.now().strftime("%Y-%m-%d-%H%M")
+    run_dir = output_root / run_stamp
+    archive_run_dir = archive_root / run_stamp
     run_dir.mkdir(parents=True, exist_ok=True)
+    archive_run_dir.mkdir(parents=True, exist_ok=True)
 
     files = list_input_audio_files(input_dir)
     total = len(files)
@@ -164,7 +199,7 @@ def run_conversion(
         if progress_cb:
             progress_cb(idx - 1, total, f"変換中: {src.name}")
 
-        work_src = processing_dir / src.name
+        work_src = _build_work_path(processing_dir, idx, src)
         try:
             shutil.copy2(src, work_src)
             ok, _ = convert_one_file(root, ffmpeg_path, work_src, run_dir)
@@ -181,11 +216,18 @@ def run_conversion(
             except Exception:
                 pass
 
+            try:
+                _archive_original(input_dir, archive_run_dir, src)
+            except Exception as exc:
+                logging.exception("アーカイブ移動に失敗: %s", exc)
+
         if progress_cb:
             progress_cb(idx, total, f"完了: {src.name}")
 
     for child in processing_dir.iterdir():
         if child.is_file() and child.name != ".gitkeep":
             child.unlink(missing_ok=True)
+
+    _cleanup_empty_dirs(input_dir)
 
     return ConversionResult(total=total, success=success, failed=failed, output_dir=run_dir)
