@@ -1,7 +1,10 @@
 import datetime as dt
+import json
 import logging
 import shutil
 import subprocess
+import time
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -83,6 +86,44 @@ def _cleanup_empty_dirs(root_dir: Path) -> None:
             pass
 
 
+def _resolve_ffprobe_path(ffmpeg_path: Path) -> Path:
+    name = "ffprobe.exe" if ffmpeg_path.name.lower().endswith(".exe") else "ffprobe"
+    return ffmpeg_path.with_name(name)
+
+
+def _probe_duration_seconds(ffprobe_path: Path, source: Path) -> float | None:
+    if not ffprobe_path.exists():
+        return None
+
+    command = [
+        str(ffprobe_path),
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "json",
+        str(source),
+    ]
+    try:
+        proc = subprocess.run(command, capture_output=True, text=True, timeout=20)
+        if proc.returncode != 0:
+            return None
+        payload = json.loads(proc.stdout)
+        duration = payload.get("format", {}).get("duration")
+        if duration is None:
+            return None
+        value = float(duration)
+        return value if value > 0 else None
+    except Exception:
+        return None
+
+
+def _timecode_to_seconds(value: str) -> float:
+    hh, mm, ss = value.split(":")
+    return int(hh) * 3600 + int(mm) * 60 + float(ss)
+
+
 def _drawtext_filter(root: Path, source_name: str) -> str:
     text, changed = sanitize_overlay_text(source_name)
     if changed:
@@ -112,8 +153,16 @@ def _drawtext_filter(root: Path, source_name: str) -> str:
     )
 
 
-def convert_one_file(root: Path, ffmpeg_path: Path, source: Path, output_dir: Path) -> tuple[bool, Path]:
+def convert_one_file(
+    root: Path,
+    ffmpeg_path: Path,
+    source: Path,
+    output_dir: Path,
+    progress_detail_cb=None,
+) -> tuple[bool, Path]:
     output_file = _build_output_path(output_dir, source)
+    ffprobe_path = _resolve_ffprobe_path(ffmpeg_path)
+    duration_sec = _probe_duration_seconds(ffprobe_path, source)
 
     filter_chain = (
         f"showspectrum=s={DEFAULT_VIDEO_WIDTH}x{DEFAULT_VIDEO_HEIGHT}:"
@@ -129,6 +178,8 @@ def convert_one_file(root: Path, ffmpeg_path: Path, source: Path, output_dir: Pa
         "-nostats",
         "-loglevel",
         "error",
+        "-progress",
+        "pipe:1",
         "-i",
         str(source),
         "-filter_complex",
@@ -156,12 +207,59 @@ def convert_one_file(root: Path, ffmpeg_path: Path, source: Path, output_dir: Pa
         str(output_file),
     ]
 
-    proc = subprocess.run(command, capture_output=True, text=True)
+    if progress_detail_cb and duration_sec:
+        progress_detail_cb(0.0, duration_sec, f"エンコード開始: {source.name}")
 
-    if proc.returncode != 0:
+    proc = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+    )
+
+    tail_lines: deque[str] = deque(maxlen=200)
+    last_emit = 0.0
+    if proc.stdout is not None:
+        for raw_line in proc.stdout:
+            line = raw_line.strip()
+            if not line:
+                continue
+            tail_lines.append(line)
+
+            if progress_detail_cb and duration_sec:
+                now = time.monotonic()
+                current = None
+                if line.startswith("out_time_ms="):
+                    try:
+                        current = float(line.split("=", 1)[1]) / 1_000_000.0
+                    except Exception:
+                        current = None
+                elif line.startswith("out_time="):
+                    try:
+                        current = _timecode_to_seconds(line.split("=", 1)[1])
+                    except Exception:
+                        current = None
+
+                if current is not None and (now - last_emit >= 0.5):
+                    progress_detail_cb(
+                        min(max(current, 0.0), duration_sec),
+                        duration_sec,
+                        f"エンコード中: {source.name}",
+                    )
+                    last_emit = now
+
+    return_code = proc.wait()
+
+    if return_code != 0:
         logging.error("変換失敗: %s", source)
-        logging.error("FFmpeg stderr:\n%s", proc.stderr[-4000:])
+        logging.error("FFmpeg出力(末尾):\n%s", "\n".join(tail_lines))
         return False, output_file
+
+    if progress_detail_cb and duration_sec:
+        progress_detail_cb(duration_sec, duration_sec, f"エンコード完了: {source.name}")
 
     logging.info("変換完了: %s", output_file)
     return True, output_file
@@ -202,7 +300,20 @@ def run_conversion(
         work_src = _build_work_path(processing_dir, idx, src)
         try:
             shutil.copy2(src, work_src)
-            ok, _ = convert_one_file(root, ffmpeg_path, work_src, run_dir)
+            if progress_cb:
+                progress_cb(idx - 1, total, f"解析中: {src.name}")
+
+            def _detail(current: float, duration: float, message: str) -> None:
+                if not progress_cb:
+                    return
+                if duration <= 0:
+                    progress_cb(idx - 1, total, message)
+                    return
+                file_ratio = min(max(current / duration, 0.0), 1.0)
+                overall = (idx - 1) + file_ratio
+                progress_cb(overall, total, message)
+
+            ok, _ = convert_one_file(root, ffmpeg_path, work_src, run_dir, _detail)
             if ok:
                 success += 1
             else:
