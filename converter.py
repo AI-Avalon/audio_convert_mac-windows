@@ -1,4 +1,4 @@
-from src.audio_converter.bootstrap import main
+from src.audio_converter.app import main
 
 
 if __name__ == "__main__":
