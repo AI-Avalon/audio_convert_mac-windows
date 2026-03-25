@@ -2,7 +2,7 @@ import argparse
 import logging
 from pathlib import Path
 
-from .bootstrap import ensure_project_dirs
+from .bootstrap import ensure_fonts_extracted, ensure_project_dirs
 from .constants import project_root
 from .engine import run_conversion
 from .logging_utils import setup_logging
@@ -49,6 +49,7 @@ def run_cli(root: Path, args: argparse.Namespace) -> int:
 def main() -> int:
     root = project_root()
     ensure_project_dirs(root)
+    ensure_fonts_extracted(root)
     setup_logging(root)
 
     args = parse_args()

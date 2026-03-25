@@ -50,6 +50,7 @@ def escape_drawtext_value(value: str) -> str:
 def resolve_font_file(root: Path) -> Path | None:
     fonts_dir = root / "fonts"
     candidates = [
+        fonts_dir / "SoukouMincho.ttf",
         fonts_dir / "NotoSansJP-Regular.ttf",
         fonts_dir / "NotoSansCJKjp-Regular.otf",
         fonts_dir / "NotoSansJP-Medium.ttf",

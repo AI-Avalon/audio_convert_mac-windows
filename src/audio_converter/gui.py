@@ -2,7 +2,7 @@ import asyncio
 
 import flet as ft
 
-from .bootstrap import ensure_project_dirs
+from .bootstrap import ensure_fonts_extracted, ensure_project_dirs
 from .constants import project_root
 from .engine import run_conversion
 from .logging_utils import setup_logging
@@ -12,6 +12,7 @@ from .system_actions import open_folder, set_low_priority_current_process, sleep
 async def build_and_run(page: ft.Page) -> None:
     root = project_root()
     ensure_project_dirs(root)
+    ensure_fonts_extracted(root)
     setup_logging(root)
 
     page.title = "Universal Audio Visualizer"

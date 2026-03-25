@@ -20,3 +20,5 @@ logs/*.log
 02_Processing/*
 !02_Processing/.gitkeep
 test.wav
+fonts/*
+!fonts/.gitkeep

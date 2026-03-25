@@ -59,6 +59,26 @@ def ensure_project_dirs(root: Path) -> None:
         archive_keep.write_text("", encoding="utf-8")
 
 
+def ensure_fonts_extracted(root: Path) -> None:
+    fonts_dir = root / "fonts"
+    fonts_dir.mkdir(parents=True, exist_ok=True)
+
+    zip_files = list(fonts_dir.glob("*.zip"))
+    for zip_path in zip_files:
+        logging.info("フォントZipを検出: %s", zip_path.name)
+        try:
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                for name in zf.namelist():
+                    if name.lower().endswith((".ttf", ".otf")):
+                        extract_path = fonts_dir / name.split("/")[-1]
+                        if not extract_path.exists():
+                            with zf.open(name) as source, extract_path.open("wb") as target:
+                                target.write(source.read())
+                            logging.info("フォントを抽出: %s", extract_path.name)
+        except Exception as exc:
+            logging.warning("フォントZip解凍に失敗: %s", exc)
+
+
 def _choose_ffmpeg_source() -> tuple[str, str]:
     system = platform.system().lower()
     machine = platform.machine().lower()
