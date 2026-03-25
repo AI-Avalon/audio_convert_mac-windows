@@ -2,9 +2,9 @@ import asyncio
 
 import flet as ft
 
-from .bootstrap import ensure_fonts_extracted, ensure_project_dirs
+from .bootstrap import ensure_fonts_extracted, ensure_project_dirs, ensure_ffmpeg
 from .constants import project_root
-from .engine import run_conversion
+from .engine import run_conversion, list_input_audio_files
 from .logging_utils import setup_logging
 from .system_actions import open_folder, set_low_priority_current_process, sleep_after_delay
 
@@ -17,30 +17,110 @@ async def build_and_run(page: ft.Page) -> None:
 
     page.title = "Universal Audio Visualizer"
     page.padding = 20
-    page.window_width = 920
-    page.window_height = 680
+    page.window_width = 960
+    page.window_height = 780
     page.scroll = ft.ScrollMode.AUTO
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = "#0F1218"
+    
+    # ウィンドウアイコン（データURIで簡単なアイコン）
+    try:
+        page.window_icon = "icons/icon.png"
+    except Exception:
+        pass  # アイコン設定に失敗しても続行
 
+    # UI コンポーネント定義
     status = ft.Text("待機中", size=16, color="#F2F4F8")
-    progress = ft.ProgressBar(width=860, value=0, color="#F97316", bgcolor="#263245")
+    progress = ft.ProgressBar(width=900, value=0, color="#F97316", bgcolor="#263245")
     logs = ft.TextField(
         label="進捗ログ",
         multiline=True,
-        min_lines=12,
-        max_lines=20,
+        min_lines=10,
+        max_lines=18,
         read_only=True,
-        text_style=ft.TextStyle(size=12, font_family="Consolas"),
+        text_style=ft.TextStyle(size=11, font_family="Consolas"),
     )
     file_counter = ft.Text("対象ファイル: 0 / 0", size=14, color="#C9D3E2")
     ratio_text = ft.Text("進捗: 0%", size=14, color="#C9D3E2")
+    estimated_time = ft.Text("推定処理時間: 計算中...", size=13, color="#A0AEC0")
+    
+    # 音源リスト表示
+    audio_list = ft.Column(controls=[], scroll=ft.ScrollMode.AUTO)
+    audio_list_container = ft.Container(
+        content=audio_list,
+        bgcolor="#1A2332",
+        border_radius=8,
+        padding=10,
+        height=150,
+    )
+    audio_list_header = ft.Text("認識された音源ファイル:", size=13, weight=ft.FontWeight.BOLD, color="#E0E7FF")
 
     low_priority = ft.Checkbox(label="低優先度モード", value=True)
     open_after = ft.Checkbox(label="完了後に出力フォルダを開く", value=True)
     sleep_after = ft.Checkbox(label="完了1分後にスリープ", value=False)
     force_ffmpeg = ft.Checkbox(label="FFmpegを再ダウンロード", value=False)
     merge_all = ft.Checkbox(label="全音源を結合した動画も生成", value=False)
+
+    def refresh_audio_list():
+        """認識された音源リストを更新"""
+        input_dir = root / "01_Input"
+        files = list_input_audio_files(input_dir)
+        
+        audio_list.controls.clear()
+        if files:
+            total_duration = 0.0
+            ffmpeg_path = root / "bin" / "ffmpeg"
+            ffprobe_path = ffmpeg_path.with_name("ffprobe")
+            
+            for file in files:
+                # ファイル名表示
+                duration_str = ""
+                try:
+                    # 簡易的に処理時間を推定（ファイルサイズから）
+                    size_mb = file.stat().st_size / (1024 * 1024)
+                    # 粗い推定：1MB あたり約0.1秒エンコード（実際には動画の長さに依存）
+                    estimated_sec = size_mb * 0.3
+                    total_duration += estimated_sec
+                    minutes = int(estimated_sec) // 60
+                    seconds = int(estimated_sec) % 60
+                    duration_str = f" (~{minutes}m{seconds}s)"
+                except Exception:
+                    pass
+                
+                item_text = ft.Text(
+                    f"• {file.name}{duration_str}",
+                    size=12,
+                    color="#D0D8E0",
+                    overflow=ft.TextOverflow.ELLIPSIS,
+                )
+                audio_list.controls.append(item_text)
+            
+            # 合計処理時間を推定
+            total_minutes = int(total_duration) // 60
+            total_seconds = int(total_duration) % 60
+            estimated_time.value = f"推定処理時間: {total_minutes}m{total_seconds}s（{len(files)}ファイル）"
+        else:
+            audio_list.controls.append(
+                ft.Text("01_Input フォルダに音源ファイルが見つかりません", size=12, color="#888A8E", italic=True)
+            )
+            estimated_time.value = "推定処理時間: -"
+        
+        page.update()
+
+    async def refresh_clicked(_):
+        """リスト更新ボタンのコールバック"""
+        await asyncio.to_thread(refresh_audio_list)
+
+    refresh_button = ft.ElevatedButton(
+        "更新",
+        on_click=refresh_clicked,
+        width=100,
+        height=40,
+    )
+    refresh_button.style = ft.ButtonStyle(
+        shape=ft.RoundedRectangleBorder(radius=8),
+        padding=ft.Padding(10, 8, 10, 8),
+    )
 
     async def run_clicked(_):
         run_button.disabled = True
@@ -91,6 +171,7 @@ async def build_and_run(page: ft.Page) -> None:
             await asyncio.to_thread(sleep_after_delay, 60)
 
         run_button.disabled = False
+        await asyncio.to_thread(refresh_audio_list)  # 完了後にリストを更新
         page.update()
 
     run_button = ft.ElevatedButton("変換開始", on_click=run_clicked)
@@ -114,18 +195,24 @@ async def build_and_run(page: ft.Page) -> None:
         ),
     )
 
+    # 初期化時に音源リストを読み込み
+    await asyncio.to_thread(refresh_audio_list)
+
     page.add(
         ft.Column(
             [
                 title_panel,
                 ft.Row([low_priority, open_after, sleep_after, force_ffmpeg, merge_all], wrap=True),
-                run_button,
+                ft.Row([run_button, refresh_button], spacing=10),
                 status,
                 progress,
                 ft.Row([file_counter, ratio_text], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                estimated_time,
+                audio_list_header,
+                audio_list_container,
                 logs,
             ],
-            spacing=14,
+            spacing=12,
         )
     )
 
