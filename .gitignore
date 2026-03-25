@@ -20,5 +20,11 @@ logs/*.log
 02_Processing/*
 !02_Processing/.gitkeep
 test.wav
+test_*.wav
+テスト*.wav
+*_test.wav
 fonts/*
 !fonts/.gitkeep
+!fonts/*.ttf
+!fonts/*.otf
+!fonts/README.md
