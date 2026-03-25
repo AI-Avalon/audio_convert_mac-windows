@@ -3,6 +3,17 @@ setlocal enabledelayedexpansion
 chcp 65001 >nul
 cd /d "%~dp0"
 
+if exist ".git" (
+  where git >nul 2>&1
+  if not errorlevel 1 (
+    echo [INFO] Updating repository...
+    git pull --ff-only
+    if errorlevel 1 (
+      echo [WARN] Update failed. Continuing with local files.
+    )
+  )
+)
+
 set UV_DIR=%CD%\.runtime\uv
 set UV_EXE=%UV_DIR%\uv.exe
 set UV_VERSION=0.6.17
@@ -38,6 +49,9 @@ if errorlevel 1 (
 
 echo [INFO] Syncing dependencies...
 "%UV_EXE%" pip install --python .runtime\venv\Scripts\python.exe -r requirements.txt
+if errorlevel 1 (
+  echo [WARN] Dependency sync failed. Continuing with best-effort runtime.
+)
 
 echo [INFO] Launching app...
 "%VENV_PY%" converter.py --gui

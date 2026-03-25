@@ -48,6 +48,60 @@ def list_input_audio_files(input_dir: Path) -> list[Path]:
     return files
 
 
+def _build_concat_list_file(sources: list[Path], target: Path) -> None:
+    lines: list[str] = []
+    for src in sources:
+        escaped = str(src).replace("'", "'\\''")
+        lines.append(f"file '{escaped}'")
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _build_merged_audio(
+    ffmpeg_path: Path,
+    sources: list[Path],
+    processing_dir: Path,
+    progress_cb=None,
+) -> Path | None:
+    if len(sources) < 2:
+        return None
+
+    concat_list = processing_dir / "_concat_inputs.txt"
+    merged_audio = processing_dir / "all_inputs_merged.wav"
+    _build_concat_list_file(sources, concat_list)
+
+    command = [
+        str(ffmpeg_path),
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(concat_list),
+        "-vn",
+        "-c:a",
+        "pcm_s16le",
+        str(merged_audio),
+    ]
+
+    if progress_cb:
+        progress_cb(0.0, 1, "全音源の結合を開始")
+
+    proc = subprocess.run(command, capture_output=True, text=True)
+    if proc.returncode != 0:
+        logging.error("全音源の結合に失敗しました。stderr=%s", proc.stderr.strip())
+        return None
+
+    if progress_cb:
+        progress_cb(1.0, 1, "全音源の結合が完了")
+
+    logging.info("結合音源を作成: %s", merged_audio)
+    return merged_audio
+
+
 def _build_output_path(output_dir: Path, source: Path) -> Path:
     safe_stem = source.stem.replace("/", "_").replace("\\", "_").strip()
     if not safe_stem:
@@ -269,6 +323,7 @@ def run_conversion(
     root: Path,
     force_ffmpeg_download: bool = False,
     progress_cb=None,
+    merge_all_inputs: bool = False,
 ) -> ConversionResult:
     ensure_project_dirs(root)
     ffmpeg_path = ensure_ffmpeg(root, force=force_ffmpeg_download)
@@ -288,6 +343,10 @@ def run_conversion(
     total = len(files)
     success = 0
     failed = 0
+
+    merge_source: Path | None = None
+    if merge_all_inputs and total >= 2:
+        merge_source = _build_merged_audio(ffmpeg_path, files, processing_dir, progress_cb)
 
     if total == 0:
         logging.warning("01_Input に変換対象の音源が見つかりません。")
@@ -334,6 +393,19 @@ def run_conversion(
 
         if progress_cb:
             progress_cb(idx, total, f"完了: {src.name}")
+
+    if merge_source is not None and merge_source.exists():
+        try:
+            ok, _ = convert_one_file(root, ffmpeg_path, merge_source, run_dir, None)
+            if ok:
+                success += 1
+            else:
+                failed += 1
+            total += 1
+        except Exception as exc:
+            total += 1
+            failed += 1
+            logging.exception("結合モードの変換に失敗: %s", exc)
 
     for child in processing_dir.iterdir():
         if child.is_file() and child.name != ".gitkeep":

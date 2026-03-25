@@ -21,6 +21,7 @@ def parse_args() -> argparse.Namespace:
         help="完了後に出力フォルダを開かない",
     )
     parser.add_argument("--sleep-after", action="store_true", help="完了後1分でスリープ")
+    parser.add_argument("--merge-all", action="store_true", help="入力音源を1本に結合した動画も生成")
     return parser.parse_args()
 
 
@@ -31,6 +32,7 @@ def run_cli(root: Path, args: argparse.Namespace) -> int:
     result = run_conversion(
         root=root,
         force_ffmpeg_download=args.force_download,
+        merge_all_inputs=args.merge_all,
     )
 
     logging.info("変換結果: success=%s failed=%s total=%s", result.success, result.failed, result.total)
@@ -52,10 +54,14 @@ def main() -> int:
     args = parse_args()
 
     if args.gui:
-        from .gui import launch_gui
+        try:
+            from .gui import launch_gui
 
-        launch_gui()
-        return 0
+            launch_gui()
+            return 0
+        except Exception as exc:
+            logging.warning("GUI起動に失敗したためCLIへフォールバックします: %s", exc)
+            return run_cli(root, args)
 
     if args.init_only:
         from .bootstrap import ensure_ffmpeg

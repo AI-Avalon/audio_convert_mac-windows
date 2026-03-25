@@ -4,6 +4,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT_DIR"
 
+if [[ -d "$ROOT_DIR/.git" ]] && command -v git >/dev/null 2>&1; then
+  echo "[INFO] リポジトリを更新します..."
+  if ! git pull --ff-only; then
+    echo "[WARN] 更新に失敗しました。現在のローカル内容で続行します。"
+  fi
+fi
+
 UV_DIR="$ROOT_DIR/.runtime/uv"
 UV_BIN="$UV_DIR/uv"
 UV_VERSION="0.6.17"
@@ -38,7 +45,9 @@ if [[ ! -x "$VENV_PY" ]]; then
 fi
 
 echo "[INFO] 依存関係を同期します..."
-"$UV_BIN" pip install --python .runtime/venv/bin/python -r requirements.txt
+if ! "$UV_BIN" pip install --python .runtime/venv/bin/python -r requirements.txt; then
+  echo "[WARN] 依存関係の同期に失敗しました。利用可能な構成で起動を継続します。"
+fi
 
 echo "[INFO] アプリを起動します..."
 "$VENV_PY" converter.py --gui

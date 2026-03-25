@@ -39,6 +39,7 @@ async def build_and_run(page: ft.Page) -> None:
     open_after = ft.Checkbox(label="完了後に出力フォルダを開く", value=True)
     sleep_after = ft.Checkbox(label="完了1分後にスリープ", value=False)
     force_ffmpeg = ft.Checkbox(label="FFmpegを再ダウンロード", value=False)
+    merge_all = ft.Checkbox(label="全音源を結合した動画も生成", value=False)
 
     async def run_clicked(_):
         run_button.disabled = True
@@ -71,6 +72,7 @@ async def build_and_run(page: ft.Page) -> None:
             root,
             force_ffmpeg.value,
             on_progress,
+            merge_all.value,
         )
 
         status.value = (
@@ -115,7 +117,7 @@ async def build_and_run(page: ft.Page) -> None:
         ft.Column(
             [
                 title_panel,
-                ft.Row([low_priority, open_after, sleep_after, force_ffmpeg], wrap=True),
+                ft.Row([low_priority, open_after, sleep_after, force_ffmpeg, merge_all], wrap=True),
                 run_button,
                 status,
                 progress,
