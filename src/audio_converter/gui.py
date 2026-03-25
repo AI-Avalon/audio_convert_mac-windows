@@ -144,9 +144,21 @@ async def build_and_run(page: ft.Page) -> None:
                 lines = logs.value.splitlines()
                 lines.append(message)
                 logs.value = "\n".join(lines[-300:])
-                page.update()
+                try:
+                    page.update()
+                except Exception:
+                    pass
 
-            page.call_from_thread(apply_update)
+            # Flet 0.27.6 では asyncio.run_coroutine_threadsafe を使用
+            async def update_wrapper() -> None:
+                apply_update()
+
+            try:
+                loop = asyncio.get_event_loop()
+                asyncio.run_coroutine_threadsafe(update_wrapper(), loop)
+            except Exception:
+                # フォールバック：直接呼び出し
+                apply_update()
 
         result = await asyncio.to_thread(
             run_conversion,
