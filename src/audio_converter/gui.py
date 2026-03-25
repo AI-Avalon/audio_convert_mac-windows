@@ -105,7 +105,7 @@ async def build_and_run(page: ft.Page) -> None:
         gradient=ft.LinearGradient(colors=["#1B2333", "#11263D", "#3A1E13"], begin=ft.alignment.top_left, end=ft.alignment.bottom_right),
         content=ft.Column(
             [
-                ft.Text("UNIVERSAL AUDIO VISUALIZER", size=14, weight=ft.FontWeight.W_600, color="#FDBA74", letter_spacing=1.6),
+                ft.Text("UNIVERSAL AUDIO VISUALIZER", size=14, weight=ft.FontWeight.W_600, color="#FDBA74"),
                 ft.Text("ユニバーサル・オーディオビジュアライザー", size=32, weight=ft.FontWeight.BOLD, color="#F8FAFC"),
                 ft.Text("演奏会品質のスペクトラム映像を、安定したローカル実行で生成", size=14, color="#D5DFED"),
                 ft.Text(f"プロジェクトルート: {root}", size=12, color="#A8B7CC"),
